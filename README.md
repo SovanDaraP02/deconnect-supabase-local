@@ -76,7 +76,7 @@ Connect Flutter by updating your Supabase config to `http://localhost:54321` wit
 | Edge Functions | 8 | Serverless TypeScript functions |
 | Storage Buckets | 4 | avatars, post-images, chat-images, chat-media |
 
-For the complete system breakdown, see [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md).
+For the complete system breakdown, see [docs/ARCHITECTURE.md](.ARCHITECTURE.md).
 
 ## Making Changes
 
