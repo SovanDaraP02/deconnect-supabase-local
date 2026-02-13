@@ -62,7 +62,7 @@ supabase db reset
 open http://localhost:54323
 ```
 
-Connect Flutter by updating your Supabase config to `http://localhost:54321` with the anon key from step 1. See [docs/SETUP_GUIDE.md](./docs/SETUP_GUIDE.md) for the full walkthrough.
+Connect Flutter by updating your Supabase config to `http://localhost:54321` with the anon key from step 1. See [docs/SETUP_GUIDE.md](.SETUP_GUIDE.md) for the full walkthrough.
 
 ## System Summary
 
