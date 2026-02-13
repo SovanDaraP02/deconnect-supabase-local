@@ -62,7 +62,7 @@ supabase db reset
 open http://localhost:54323
 ```
 
-Connect Flutter by updating your Supabase config to `http://localhost:54321` with the anon key from step 1. See [docs/SETUP_GUIDE.md](.SETUP_GUIDE.md) for the full walkthrough.
+Connect Flutter by updating your Supabase config to `http://localhost:54321` with the anon key from step 1. See [docs/SETUP_GUIDE.md](SETUP_GUIDE.md) for the full walkthrough.
 
 ## System Summary
 
@@ -76,7 +76,7 @@ Connect Flutter by updating your Supabase config to `http://localhost:54321` wit
 | Edge Functions | 8 | Serverless TypeScript functions |
 | Storage Buckets | 4 | avatars, post-images, chat-images, chat-media |
 
-For the complete system breakdown, see [docs/ARCHITECTURE.md](.ARCHITECTURE.md).
+For the complete system breakdown, see [docs/ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Making Changes
 
