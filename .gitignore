@@ -1,42 +1,38 @@
-
 # Supabase
-
 .branches
 .temp
 supabase/snippets/
 
+# Environment & secrets (NEVER commit)
 .env
-
 .env.local
-
-
+.env.production
+supabase/functions/service-account.json
 
 # Dependencies
 node_modules/
 package-lock.json
 
 # OS
-
 .DS_Store
-
 Thumbs.db
 
 # IDE
-
 .vscode/
-
 .idea/
-
 *.swp
-
 *.swo
 
 # Logs
-
 *.log
 
+# Build artifacts
+supabase.zip
 
-# One-time scripts (remove after cleanup)
+# One-time scripts
 fix_duplicates.sh
 deduplicate_policies.py
 reorganize_project.sh
+.env
+.env copy
+.env.local

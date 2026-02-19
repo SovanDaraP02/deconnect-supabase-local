@@ -299,6 +299,8 @@ ALTER TABLE posts REPLICA IDENTITY FULL;
 ALTER PUBLICATION supabase_realtime ADD TABLE comments;
 ALTER TABLE comments REPLICA IDENTITY FULL;
 
+ALTER TABLE public.profiles
+ADD CONSTRAINT profiles_email_key UNIQUE (email);
 
 
 UPDATE public.posts

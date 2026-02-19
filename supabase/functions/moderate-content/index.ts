@@ -1,35 +1,20 @@
 // supabase/functions/moderate-content/index.ts
 // Purpose: Basic content moderation for posts, comments, messages
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type"
-};
+import { getServiceClient } from "../_shared/supabase.ts";
+import { json, handleCors } from "../_shared/helpers.ts";
+
 // Simple bad word filter (expand as needed)
-const BLOCKED_PATTERNS = [
-  /\b(spam|scam|hack)\b/gi
-];
-const SUSPICIOUS_PATTERNS = [
-  /https?:\/\/[^\s]+/gi,
-  /\b\d{10,}\b/g
-];
-function json(status, data) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      ...corsHeaders,
-      "Content-Type": "application/json"
-    }
-  });
-}
-function moderateContent(content) {
-  const reasons = [];
+const BLOCKED_PATTERNS = [/\b(spam|scam|hack)\b/gi];
+const SUSPICIOUS_PATTERNS = [/https?:\/\/[^\s]+/gi, /\b\d{10,}\b/g];
+
+function moderateContent(content: string) {
+  const reasons: string[] = [];
   let severity = "low";
   let flagged = false;
   let approved = true;
-  // Check for blocked patterns
-  for (const pattern of BLOCKED_PATTERNS){
+
+  for (const pattern of BLOCKED_PATTERNS) {
     if (pattern.test(content)) {
       flagged = true;
       severity = "high";
@@ -38,71 +23,66 @@ function moderateContent(content) {
       break;
     }
   }
-  // Check for suspicious patterns (flag but don't block)
-  for (const pattern of SUSPICIOUS_PATTERNS){
+
+  for (const pattern of SUSPICIOUS_PATTERNS) {
     if (pattern.test(content)) {
       flagged = true;
       if (severity === "low") severity = "medium";
       reasons.push("Contains suspicious content for review");
     }
   }
-  // Check content length
+
   if (content.length > 5000) {
     flagged = true;
     reasons.push("Content exceeds maximum length");
     severity = "medium";
   }
-  // Check for excessive caps (spam indicator)
-  const capsRatio = (content.match(/[A-Z]/g) || []).length / content.length;
+
+  const capsRatio =
+    (content.match(/[A-Z]/g) || []).length / content.length;
   if (capsRatio > 0.7 && content.length > 20) {
     flagged = true;
     reasons.push("Excessive capitalization");
     if (severity === "low") severity = "medium";
   }
-  return {
-    approved,
-    flagged,
-    severity,
-    reasons
-  };
+
+  return { approved, flagged, severity, reasons };
 }
-serve(async (req)=>{
-  if (req.method === "OPTIONS") {
-    return new Response("ok", {
-      headers: corsHeaders
-    });
-  }
+
+serve(async (req) => {
+  const cors = handleCors(req);
+  if (cors) return cors;
+
   if (req.method !== "POST") {
-    return json(405, {
-      error: "Method not allowed"
-    });
+    return json(405, { error: "Method not allowed" });
   }
-  const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (!supabaseUrl || !serviceRoleKey) {
-    return json(500, {
-      error: "Missing environment variables"
-    });
-  }
-  const supabase = createClient(supabaseUrl, serviceRoleKey);
-  let payload;
+
+  const supabase = getServiceClient();
+
+  let payload: Record<string, unknown>;
   try {
     payload = await req.json();
-  } catch  {
-    return json(400, {
-      error: "Invalid JSON"
-    });
+  } catch {
+    return json(400, { error: "Invalid JSON" });
   }
-  const { content, content_type, content_id, user_id } = payload;
+
+  const { content, content_type, content_id, user_id } = payload as {
+    content?: string;
+    content_type?: string;
+    content_id?: string;
+    user_id?: string;
+  };
+
   if (!content || !content_type || !user_id) {
     return json(400, {
-      error: "Missing required fields: content, content_type, user_id"
+      error: "Missing required fields: content, content_type, user_id",
     });
   }
+
   try {
-    // Run moderation
     const result = moderateContent(content);
-    // Log to content_moderation_log table
+
+    // Log to moderation table
     await supabase.from("content_moderation_log").insert({
       content_type,
       content_id: content_id || null,
@@ -113,35 +93,25 @@ serve(async (req)=>{
       reasons: result.reasons,
       auto_moderated: true,
       content_preview: content.substring(0, 200),
-      metadata: {
-        content_length: content.length,
-        moderation_version: "1.0"
-      }
+      metadata: { content_length: content.length, moderation_version: "1.0" },
     });
-    // If content is not approved, log to system_logs
+
     if (!result.approved) {
       await supabase.from("system_logs").insert({
         level: "warning",
         message: "Content blocked by auto-moderation",
-        metadata: {
-          content_type,
-          content_id,
-          user_id,
-          reasons: result.reasons
-        },
-        user_id
+        metadata: { content_type, content_id, user_id, reasons: result.reasons },
+        user_id,
       });
     }
+
     return json(200, {
       ...result,
-      message: result.approved ? "Content approved" : "Content blocked"
+      message: result.approved ? "Content approved" : "Content blocked",
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("Moderation error:", msg);
-    return json(500, {
-      error: "Moderation failed",
-      details: msg
-    });
+    return json(500, { error: "Moderation failed", details: msg });
   }
 });

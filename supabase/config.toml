@@ -7,7 +7,6 @@ port = 54321
 schemas = ["public", "storage", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
-
 [db]
 port = 54322
 shadow_port = 54320
@@ -37,6 +36,11 @@ file_size_limit = "50MiB"
 
 [functions.create-post]
 verify_jwt = false
+
+[functions.send-push-notification]
+verify_jwt = false
+
+
 
 [auth]
 enabled = true

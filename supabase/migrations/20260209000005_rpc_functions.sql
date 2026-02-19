@@ -1090,6 +1090,69 @@ END;
 $function$
 ;
 
+-- Custom password policy for email/password signups
+-- Requirements:
+-- - Minimum 6 characters
+-- - At least 1 lowercase
+-- - At least 1 uppercase
+-- - At least 1 digit
+
+create or replace function public.validate_password_policy(p_password text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  has_lower boolean;
+  has_upper boolean;
+  has_digit boolean;
+begin
+  -- Length check
+  if length(p_password) < 6 then
+    return false;
+  end if;
+
+  -- Lowercase
+  select exists (
+    select 1
+    from regexp_matches(p_password, '[a-z]') as m
+  ) into has_lower;
+
+  -- Uppercase
+  select exists (
+    select 1
+    from regexp_matches(p_password, '[A-Z]') as m
+  ) into has_upper;
+
+  -- Digit
+  select exists (
+    select 1
+    from regexp_matches(p_password, '[0-9]') as m
+  ) into has_digit;
+
+  if has_lower and has_upper and has_digit then
+    return true;
+  else
+    return false;
+  end if;
+end;
+$$;
+
+create or replace function public.check_password_policy(p_password text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.validate_password_policy(p_password) then
+    raise exception
+      'Password must be at least 6 characters and include lowercase, uppercase, and a number';
+  end if;
+end;
+$$;
+
 
 grant insert on table "public"."call_participants" to "anon";
 

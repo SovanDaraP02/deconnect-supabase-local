@@ -19,9 +19,15 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
 (
   'chat-media',
   'chat-media',
-  false,
-  12582912,
-  NULL
+  true,
+  52428800,
+  ARRAY[
+    'image/jpeg','image/png','image/gif','image/webp','image/bmp',
+    'video/mp4','video/quicktime','video/webm',
+    'audio/mp4','audio/mpeg','audio/wav','audio/ogg','audio/aac',
+    'application/pdf','application/octet-stream',
+    'text/plain','text/csv'
+  ]
 ),
 (
   'post-images',
@@ -37,23 +43,6 @@ INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_typ
   5242880,
   NULL
 )
-ON CONFLICT (id) DO NOTHING;
-
---- ========================
--- STORAGE BUCKETS
--- ========================
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types) VALUES
-(
-  'chat-files', 'chat-files', true, 157286400,
-  ARRAY['image/jpeg','image/png','image/gif','image/webp','image/svg+xml','image/bmp','application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','text/plain','text/csv','text/html','application/zip','application/x-rar-compressed','application/x-7z-compressed','audio/mpeg','audio/wav','audio/ogg','video/mp4','video/webm','video/quicktime']
-),
-(
-  'chat-images', 'chat-images', true, 157286400,
-  ARRAY['image/jpeg','image/png','image/gif','image/webp','image/svg+xml','image/bmp','application/pdf','application/msword','application/vnd.openxmlformats-officedocument.wordprocessingml.document','application/vnd.ms-excel','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet','application/vnd.ms-powerpoint','application/vnd.openxmlformats-officedocument.presentationml.presentation','text/plain','text/csv','text/html','application/zip','application/x-rar-compressed','application/x-7z-compressed','application/octet-stream','audio/mpeg','audio/wav','audio/ogg','audio/mp4','video/mp4','video/webm','video/quicktime']
-),
-( 'chat-media', 'chat-media', false, 12582912, NULL ),
-( 'post-images', 'post-images', true, 8388608, NULL ),
-( 'avatars', 'avatars', true, 5242880, NULL )
 ON CONFLICT (id) DO NOTHING;
 
 -- ========================

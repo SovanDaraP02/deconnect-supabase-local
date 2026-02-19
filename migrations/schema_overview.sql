@@ -1,20 +1,4 @@
 -- ============================================================================
--- DeConnect Database Schema — Complete Overview
--- ============================================================================
--- AUTO-GENERATED from supabase/migrations/*.sql
--- Generated: 2026-02-10 02:00:15
--- 
--- This file is for READING ONLY (CTO review, code review, onboarding).
--- To run migrations, use: supabase db reset
--- To edit, modify files in supabase/migrations/ then re-run this script.
--- ============================================================================
-
-
--- ======================================================================
--- SOURCE: 20260209000001_extensions.sql
--- ======================================================================
-
--- ============================================================================
 -- EXTENSIONS AND SETUP
 -- ============================================================================
 --
@@ -28,11 +12,6 @@
 create extension if not exists "pg_cron" with schema "pg_catalog";
 
 drop extension if exists "pg_net";
-
-
--- ======================================================================
--- SOURCE: 20260209000002_tables.sql
--- ======================================================================
 
 -- ============================================================================
 -- DATABASE TABLES
@@ -310,10 +289,50 @@ alter table "public"."typing_indicators" add constraint "typing_indicators_room_
 
 alter table "public"."typing_indicators" add constraint "typing_indicators_user_id_fkey" FOREIGN KEY (user_id) REFERENCES public.profiles(id) ON DELETE CASCADE not valid;
 
+-- Enable realtime for messages table
+-- Messages (critical for real-time chat)
+ALTER PUBLICATION supabase_realtime ADD TABLE messages;
+ALTER TABLE messages REPLICA IDENTITY FULL;
 
--- ======================================================================
--- SOURCE: 20260209000003_indexes.sql
--- ======================================================================
+-- Typing indicators (for "user is typing..." feature)
+ALTER PUBLICATION supabase_realtime ADD TABLE typing_indicators;
+ALTER TABLE typing_indicators REPLICA IDENTITY FULL;
+
+-- Chat rooms (for real-time room list updates)
+ALTER PUBLICATION supabase_realtime ADD TABLE chat_rooms;
+ALTER TABLE chat_rooms REPLICA IDENTITY FULL;
+
+-- Room members (for member join/leave notifications)
+ALTER PUBLICATION supabase_realtime ADD TABLE room_members;
+ALTER TABLE room_members REPLICA IDENTITY FULL;
+
+-- Posts (optional: for real-time feed updates)
+ALTER PUBLICATION supabase_realtime ADD TABLE posts;
+ALTER TABLE posts REPLICA IDENTITY FULL;
+
+-- Comments (optional: for real-time comment updates)
+ALTER PUBLICATION supabase_realtime ADD TABLE comments;
+ALTER TABLE comments REPLICA IDENTITY FULL;
+
+ALTER TABLE public.profiles
+ADD CONSTRAINT profiles_email_key UNIQUE (email);
+
+
+UPDATE public.posts
+SET image_url = substring(image_url from '/post-images/(.*)$')
+WHERE image_url IS NOT NULL
+  AND image_url LIKE '%/post-images/%';
+
+
+
+
+
+
+
+
+
+
+
 
 -- ============================================================================
 -- DATABASE INDEXES
@@ -369,12 +388,7 @@ CREATE INDEX room_members_user_id_room_id_idx ON public.room_members USING btree
 CREATE INDEX system_logs_created_at_idx ON public.system_logs USING btree (created_at DESC);
 CREATE INDEX system_logs_level_created_at_idx ON public.system_logs USING btree (level, created_at DESC);
 CREATE INDEX system_logs_level_idx ON public.system_logs USING btree (level);
-CREATE INDEX system_logs_user_id_idx ON public.system_logs USING btree (user_id);
--- ======================================================================
--- SOURCE: 20260209000004_triggers_helpers.sql
--- ======================================================================
-
--- ============================================================================
+CREATE INDEX system_logs_user_id_idx ON public.system_logs USING btree (user_id);-- ============================================================================
 -- HELPER FUNCTIONS & TRIGGERS
 -- ============================================================================
 --
@@ -1488,6 +1502,54 @@ END;
 $function$
 ;
 
+-- ============================================================================
+-- BROADCAST FUNCTIONS FOR REAL-TIME UPDATES
+-- ============================================================================
+
+CREATE OR REPLACE FUNCTION public.broadcast_message_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  PERFORM pg_notify(
+    'messages:' || NEW.room_id::text,
+    json_build_object(
+      'event', TG_OP,
+      'message_id', NEW.id,
+      'room_id', NEW.room_id,
+      'sender_id', NEW.sender_id,
+      'content', NEW.content,
+      'media_url', NEW.media_url,
+      'media_type', NEW.media_type,
+      'is_read', NEW.is_read,
+      'created_at', NEW.created_at
+    )::text
+  );
+  RETURN NEW;
+END;
+$function$
+;
+
+CREATE OR REPLACE FUNCTION public.broadcast_room_change()
+ RETURNS trigger
+ LANGUAGE plpgsql
+AS $function$
+BEGIN
+  PERFORM pg_notify(
+    'room_members:' || NEW.room_id::text,
+    json_build_object(
+      'event', TG_OP,
+      'room_id', NEW.room_id,
+      'user_id', NEW.user_id,
+      'is_admin', NEW.is_admin,
+      'joined_at', NEW.joined_at
+    )::text
+  );
+  RETURN NEW;
+END;
+$function$
+;
+
 grant delete on table "public"."call_participants" to "anon";
 
 -- ============================================================================
@@ -1506,6 +1568,10 @@ CREATE TRIGGER on_message_update_last_seen AFTER INSERT ON public.messages FOR E
 
 CREATE TRIGGER update_room_on_new_message AFTER INSERT ON public.messages FOR EACH ROW EXECUTE FUNCTION public.update_room_on_message();
 
+CREATE TRIGGER broadcast_message_insert AFTER INSERT ON public.messages FOR EACH ROW EXECUTE FUNCTION public.broadcast_message_change();
+
+CREATE TRIGGER broadcast_message_update AFTER UPDATE ON public.messages FOR EACH ROW EXECUTE FUNCTION public.broadcast_message_change();
+
 CREATE TRIGGER handle_posts_updated_at BEFORE UPDATE ON public.posts FOR EACH ROW EXECUTE FUNCTION public.handle_updated_at();
 
 CREATE TRIGGER log_post_deletion BEFORE DELETE ON public.posts FOR EACH ROW EXECUTE FUNCTION public.log_post_deletion_attempt();
@@ -1516,6 +1582,10 @@ CREATE TRIGGER log_user_ban AFTER UPDATE OF is_banned ON public.profiles FOR EAC
 
 CREATE TRIGGER auto_admin_room_creator BEFORE INSERT ON public.room_members FOR EACH ROW EXECUTE FUNCTION public.set_room_creator_as_admin();
 
+CREATE TRIGGER broadcast_room_member_insert AFTER INSERT ON public.room_members FOR EACH ROW EXECUTE FUNCTION public.broadcast_room_change();
+
+CREATE TRIGGER broadcast_room_member_update AFTER UPDATE ON public.room_members FOR EACH ROW EXECUTE FUNCTION public.broadcast_room_change();
+
 CREATE TRIGGER on_admin_leave BEFORE DELETE ON public.room_members FOR EACH ROW EXECUTE FUNCTION public.transfer_admin_on_leave();
 
 CREATE TRIGGER on_auth_user_created AFTER INSERT ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
@@ -1524,11 +1594,6 @@ CREATE TRIGGER on_auth_user_deleted BEFORE DELETE ON auth.users FOR EACH ROW EXE
 
 CREATE TRIGGER on_auth_user_updated AFTER UPDATE ON auth.users FOR EACH ROW EXECUTE FUNCTION public.handle_user_update();
 
-
-
--- ======================================================================
--- SOURCE: 20260209000005_rpc_functions.sql
--- ======================================================================
 
 -- ============================================================================
 -- RPC FUNCTIONS (BUSINESS LOGIC)
@@ -2622,6 +2687,69 @@ END;
 $function$
 ;
 
+-- Custom password policy for email/password signups
+-- Requirements:
+-- - Minimum 6 characters
+-- - At least 1 lowercase
+-- - At least 1 uppercase
+-- - At least 1 digit
+
+create or replace function public.validate_password_policy(p_password text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  has_lower boolean;
+  has_upper boolean;
+  has_digit boolean;
+begin
+  -- Length check
+  if length(p_password) < 6 then
+    return false;
+  end if;
+
+  -- Lowercase
+  select exists (
+    select 1
+    from regexp_matches(p_password, '[a-z]') as m
+  ) into has_lower;
+
+  -- Uppercase
+  select exists (
+    select 1
+    from regexp_matches(p_password, '[A-Z]') as m
+  ) into has_upper;
+
+  -- Digit
+  select exists (
+    select 1
+    from regexp_matches(p_password, '[0-9]') as m
+  ) into has_digit;
+
+  if has_lower and has_upper and has_digit then
+    return true;
+  else
+    return false;
+  end if;
+end;
+$$;
+
+create or replace function public.check_password_policy(p_password text)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if not public.validate_password_policy(p_password) then
+    raise exception
+      'Password must be at least 6 characters and include lowercase, uppercase, and a number';
+  end if;
+end;
+$$;
+
 
 grant insert on table "public"."call_participants" to "anon";
 
@@ -2680,11 +2808,6 @@ grant update on table "public"."calls" to "anon";
 grant delete on table "public"."calls" to "authenticated";
 
 grant insert on table "public"."calls" to "authenticated";
-
--- ======================================================================
--- SOURCE: 20260209000006_rls_policies.sql
--- ======================================================================
-
 -- ============================================================================
 -- ROW LEVEL SECURITY POLICIES
 -- ============================================================================
@@ -3112,11 +3235,6 @@ create policy "Users can leave calls"
   for delete
   to authenticated
 using ((user_id = auth.uid()));
-
--- ======================================================================
--- SOURCE: 20260209000007_storage_policies.sql
--- ======================================================================
-
 -- ============================================================================
 -- STORAGE POLICIES
 -- ============================================================================
@@ -3158,7 +3276,7 @@ with check (((bucket_id = 'post-images'::text) AND (auth.role() = 'authenticated
   as permissive
   for select
   to public
-using (((bucket_id = 'chat-images'::text) AND (auth.role() = 'authenticated'::text)));
+using ((bucket_id = 'chat-images'::text));
 
 
   create policy "Members can upload chat media"
@@ -3174,7 +3292,7 @@ with check (((bucket_id = 'chat-media'::text) AND (auth.role() = 'authenticated'
   as permissive
   for select
   to public
-using (((bucket_id = 'chat-media'::text) AND (auth.role() = 'authenticated'::text)));
+using ((bucket_id = 'chat-media'::text));
 
 
   create policy "Room members can upload chat images"
@@ -3272,47 +3390,276 @@ with check ((bucket_id = 'chat-images'::text));
   to authenticated
 using ((bucket_id = 'chat-images'::text));
 
+-- Migration: enqueue post image deletions and helper table
+-- Adds `post_image_deletions` table and trigger to enqueue image paths when posts are deleted
 
--- Enable realtime for messages table
--- Messages (critical for real-time chat)
-ALTER PUBLICATION supabase_realtime ADD TABLE messages;
-ALTER TABLE messages REPLICA IDENTITY FULL;
+CREATE TABLE IF NOT EXISTS public.post_image_deletions (
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
+  post_id uuid NOT NULL,
+  bucket_id text NOT NULL,
+  object_path text NOT NULL,
+  created_at timestamptz DEFAULT now(),
+  processed boolean DEFAULT false,
+  processed_at timestamptz,
+  CONSTRAINT post_image_deletions_pkey PRIMARY KEY (id)
+);
 
--- Typing indicators (for "user is typing..." feature)
-ALTER PUBLICATION supabase_realtime ADD TABLE typing_indicators;
-ALTER TABLE typing_indicators REPLICA IDENTITY FULL;
+CREATE OR REPLACE FUNCTION public.enqueue_post_image_deletion()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $function$
+BEGIN
+  IF OLD.image_url IS NULL OR trim(OLD.image_url) = '' THEN
+    RETURN OLD;
+  END IF;
 
--- Chat rooms (for real-time room list updates)
-ALTER PUBLICATION supabase_realtime ADD TABLE chat_rooms;
-ALTER TABLE chat_rooms REPLICA IDENTITY FULL;
+  -- Attempt to extract object path after '/post-images/'
+  -- Works for URLs like: https://.../storage/v1/object/public/post-images/<path>
+  PERFORM 1;
+  INSERT INTO public.post_image_deletions (post_id, bucket_id, object_path)
+  VALUES (
+    OLD.id,
+    'post-images',
+    coalesce(substring(OLD.image_url from '/post-images/(.*)$'), '')
+  );
 
--- Room members (for member join/leave notifications)
-ALTER PUBLICATION supabase_realtime ADD TABLE room_members;
-ALTER TABLE room_members REPLICA IDENTITY FULL;
+  RETURN OLD;
+END;
+$function$;
 
--- Posts (optional: for real-time feed updates)
-ALTER PUBLICATION supabase_realtime ADD TABLE posts;
-ALTER TABLE posts REPLICA IDENTITY FULL;
+-- Create trigger to enqueue when a post with image is deleted
+DROP TRIGGER IF EXISTS enqueue_post_image_deletion_trigger ON public.posts;
+CREATE TRIGGER enqueue_post_image_deletion_trigger
+BEFORE DELETE ON public.posts
+FOR EACH ROW
+WHEN (OLD.image_url IS NOT NULL)
+EXECUTE FUNCTION public.enqueue_post_image_deletion();
 
--- Comments (optional: for real-time comment updates)
-ALTER PUBLICATION supabase_realtime ADD TABLE comments;
-ALTER TABLE comments REPLICA IDENTITY FULL;
+-- Index to quickly find unprocessed deletions
+CREATE INDEX IF NOT EXISTS post_image_deletions_unprocessed_idx ON public.post_image_deletions (processed, created_at);
+-- Add `image_path` column to public.posts to store original storage path
+ALTER TABLE public.posts
+  ADD COLUMN IF NOT EXISTS image_path text;
+-- ============================================================
+-- Migration 010: Push Notification Support
+-- ============================================================
 
+-- 1. Add fcm_token column to profiles
+ALTER TABLE public.profiles
+ADD COLUMN IF NOT EXISTS fcm_token text;
 
+-- 2. Create notifications table (no FK to chatrooms - use app-level validation)
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  title text,
+  body text NOT NULL,
+  channel text NOT NULL DEFAULT 'general'
+    CHECK (channel IN ('direct_message', 'group_message', 'buy_channel', 'general')),
+  room_id uuid,
+  sender_id uuid,
+  data jsonb DEFAULT '{}'::jsonb,
+  is_read boolean NOT NULL DEFAULT false
+);
 
-UPDATE public.posts
-SET image_url = substring(image_url from '/post-images/(.*)$')
-WHERE image_url IS NOT NULL
-  AND image_url LIKE '%/post-images/%';
+-- 3. Add foreign keys only if tables exist
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'chatrooms') THEN
+    ALTER TABLE public.notifications
+      ADD CONSTRAINT notifications_room_id_fkey
+      FOREIGN KEY (room_id) REFERENCES public.chatrooms(id) ON DELETE SET NULL;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Could not add chatrooms FK: %', SQLERRM;
+END $$;
 
+DO $$
+BEGIN
+  ALTER TABLE public.notifications
+    ADD CONSTRAINT notifications_sender_id_fkey
+    FOREIGN KEY (sender_id) REFERENCES auth.users(id) ON DELETE SET NULL;
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'Could not add sender FK: %', SQLERRM;
+END $$;
 
+-- 4. Indexes
+CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON public.notifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON public.notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_notifications_channel ON public.notifications(channel);
+CREATE INDEX IF NOT EXISTS idx_profiles_fcm_token ON public.profiles(fcm_token) WHERE fcm_token IS NOT NULL;
 
+-- 5. Enable RLS
+ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
+-- 6. RLS Policies
+CREATE POLICY "Users can view own notifications"
+  ON public.notifications FOR SELECT
+  USING (auth.uid() = user_id);
 
+CREATE POLICY "Authenticated users can insert notifications"
+  ON public.notifications FOR INSERT
+  WITH CHECK (auth.role() = 'authenticated');
 
+CREATE POLICY "Users can update own notifications"
+  ON public.notifications FOR UPDATE
+  USING (auth.uid() = user_id);
 
+CREATE POLICY "Users can delete own notifications"
+  ON public.notifications FOR DELETE
+  USING (auth.uid() = user_id);
+-- ============================================================
+-- Migration 011: Push Notification RPC Functions
+-- ============================================================
 
+-- 1. Update FCM token for current user
+CREATE OR REPLACE FUNCTION update_fcm_token(p_token text)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE public.profiles
+  SET fcm_token = p_token
+  WHERE id = auth.uid();
+END;
+$$;
 
+-- 2. Remove FCM token (on logout)
+CREATE OR REPLACE FUNCTION remove_fcm_token()
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE public.profiles
+  SET fcm_token = NULL
+  WHERE id = auth.uid();
+END;
+$$;
 
+-- 3. Send notification to a specific user (inserts into notifications table → triggers webhook)
+CREATE OR REPLACE FUNCTION notify_user(
+  p_user_id uuid,
+  p_title text,
+  p_body text,
+  p_channel text DEFAULT 'general',
+  p_room_id uuid DEFAULT NULL,
+  p_data jsonb DEFAULT '{}'::jsonb
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_notification_id uuid;
+BEGIN
+  INSERT INTO public.notifications (user_id, title, body, channel, room_id, sender_id, data)
+  VALUES (p_user_id, p_title, p_body, p_channel, p_room_id, auth.uid(), p_data)
+  RETURNING id INTO v_notification_id;
 
+  RETURN v_notification_id;
+END;
+$$;
 
+-- 4. Notify all members in a room (for group messages)
+CREATE OR REPLACE FUNCTION notify_room_members(
+  p_room_id uuid,
+  p_title text,
+  p_body text,
+  p_channel text DEFAULT 'group_message',
+  p_data jsonb DEFAULT '{}'::jsonb
+)
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_count integer := 0;
+BEGIN
+  INSERT INTO public.notifications (user_id, title, body, channel, room_id, sender_id, data)
+  SELECT rm.user_id, p_title, p_body, p_channel, p_room_id, auth.uid(), p_data
+  FROM public.room_members rm
+  WHERE rm.room_id = p_room_id
+    AND rm.user_id != auth.uid();  -- Don't notify yourself
+
+  GET DIAGNOSTICS v_count = ROW_COUNT;
+  RETURN v_count;
+END;
+$$;
+
+-- 5. Get unread notifications for current user
+CREATE OR REPLACE FUNCTION get_my_notifications(
+  p_limit integer DEFAULT 50,
+  p_offset integer DEFAULT 0
+)
+RETURNS TABLE (
+  id uuid,
+  title text,
+  body text,
+  channel text,
+  room_id uuid,
+  sender_id uuid,
+  sender_username text,
+  sender_avatar text,
+  data jsonb,
+  is_read boolean,
+  created_at timestamptz
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  RETURN QUERY
+  SELECT
+    n.id,
+    n.title,
+    n.body,
+    n.channel,
+    n.room_id,
+    n.sender_id,
+    p.username AS sender_username,
+    p.avatar_url AS sender_avatar,
+    n.data,
+    n.is_read,
+    n.created_at
+  FROM public.notifications n
+  LEFT JOIN public.profiles p ON p.id = n.sender_id
+  WHERE n.user_id = auth.uid()
+  ORDER BY n.created_at DESC
+  LIMIT p_limit OFFSET p_offset;
+END;
+$$;
+
+-- 6. Mark notifications as read
+CREATE OR REPLACE FUNCTION mark_notifications_read(p_notification_ids uuid[])
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+BEGIN
+  UPDATE public.notifications
+  SET is_read = true
+  WHERE id = ANY(p_notification_ids)
+    AND user_id = auth.uid();
+END;
+$$;
+
+-- 7. Get unread count
+CREATE OR REPLACE FUNCTION get_unread_notification_count()
+RETURNS integer
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  v_count integer;
+BEGIN
+  SELECT COUNT(*)::integer INTO v_count
+  FROM public.notifications
+  WHERE user_id = auth.uid()
+    AND is_read = false;
+  RETURN v_count;
+END;
+$$;
