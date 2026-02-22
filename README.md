@@ -2,55 +2,61 @@
 
 > Real-time chat + social feed backend powered by Supabase (Postgres, Edge Functions, Realtime)
 
-This is the **complete Supabase backend** for DeConnect. Download it from GitHub and run it locally.
-
-
----
-
-## Install Requirements
-
-| Tool | Install |
-|------|---------|
-| Docker Desktop | [docker.com](https://www.docker.com/products/docker-desktop/) |
-| Supabase CLI | [supabase.com/docs/guides/cli](https://supabase.com/docs/guides/cli/getting-started) |
+This is the **complete Supabase backend** for the DeConnect Flutter app. Clone it from GitHub and run it locally.
 
 ---
 
-## Run the Backend
+## Prerequisites
 
-Open terminal in this project folder and run these commands:
+| Tool | Version | Install |
+|------|---------|---------|
+| Docker Desktop | Latest | [docker.com](https://www.docker.com/products/docker-desktop/) |
+| Supabase CLI | >= 1.100 | `brew install supabase/tap/supabase` or [docs](https://supabase.com/docs/guides/cli/getting-started) |
+| Node.js | >= 18 | [nodejs.org](https://nodejs.org/) (required for edge functions) |
+
+---
+
+## Quick Start
+
+Open a terminal in this project folder and run:
 
 ```bash
-# Step 1: Start Supabase (first time takes 2-3 min to download Docker images)
+# 1. Start Supabase (first time takes 2-3 min to pull Docker images)
 supabase start
 
-# Step 2: Create database (runs all 19 migrations + loads test data)
+# 2. Set up the .env file
+cp .env.example .env
+# Edit .env with your Firebase service account JSON (optional for push notifications)
+
+# 3. Create database (runs all 18 migrations + loads seed data)
 supabase db reset
 
-# Step 3: Start edge functions
+# 4. Start edge functions
 supabase functions serve --env-file .env
 ```
 
-That's it! Your backend is running.
+Your backend is now running!
 
 ---
 
-## What's Running Now
+## What's Running
 
-After the 3 commands above, you have:
+After the commands above, these services are available:
 
-| Service | URL | What It Does |
-|---------|-----|--------------|
-| **API** | http://localhost:54321 | Your app connects here |
-| **Studio** | http://localhost:54323 | Visual database editor (open in browser!) |
+| Service | URL | Description |
+|---------|-----|-------------|
+| **API Gateway** | http://localhost:54321 | REST + Realtime API (app connects here) |
+| **Studio** | http://localhost:54323 | Visual database editor (open in browser) |
+| **Auth** | http://localhost:54321/auth/v1 | Authentication endpoints |
 | **Edge Functions** | http://localhost:54321/functions/v1/ | 8 serverless functions |
-| **Database** | postgresql://postgres:postgres@localhost:54322/postgres | PostgreSQL direct access |
+| **Inbucket** | http://localhost:54324 | Email testing inbox |
+| **Database** | postgresql://postgres:postgres@localhost:54322/postgres | Direct PostgreSQL access |
 
-Open **http://localhost:54323** in your browser to see your database.
+> Run `supabase status` to see all URLs and API keys.
 
 ---
 
-## Test Users
+## Test Users (from seed data)
 
 All passwords are `password123`:
 
@@ -62,249 +68,196 @@ All passwords are `password123`:
 
 ---
 
-## All Commands
+## CLI Commands Reference
 
-### Everyday Commands
-
-```bash
-supabase start                       # Start backend
-supabase stop                        # Stop backend
-supabase status                      # Show URLs + keys
-supabase db reset                    # Reset database (fresh start)
-supabase functions serve --env-file .env   # Start edge functions
-```
-
-### View Logs
+### Startup & Shutdown
 
 ```bash
-supabase logs                        # All logs
-supabase logs db                     # Database only
-supabase logs --follow               # Live tail
-supabase functions logs send-push-notification   # Specific function
+supabase start                              # Start all services
+supabase stop                               # Stop all services
+supabase stop --no-backup                   # Stop and remove all data
+supabase status                             # Show URLs + API keys
 ```
 
 ### Database
 
 ```bash
-supabase db reset                    # Reset (runs all migrations + seed)
-supabase db push                     # Push to production
-supabase migration new my_feature    # Create new migration file
+supabase db reset                           # Drop & recreate DB (migrations + seed)
+supabase db push                            # Push migrations to remote/production
+supabase migration new my_feature           # Create a new migration file
+supabase migration list                     # List all migrations
 ```
 
 ### Edge Functions
 
 ```bash
-supabase functions serve --env-file .env                  # Run all locally
-supabase functions new my-function                        # Create new function
-supabase functions deploy send-push-notification          # Deploy one to production
+supabase functions serve --env-file .env    # Run all functions locally
+supabase functions new my-function          # Create a new function
+supabase functions deploy <function-name>   # Deploy a single function to production
 ```
 
-### Secrets (for edge functions)
+### Logs
 
 ```bash
-supabase secrets list                                     # Show all secrets
-supabase secrets set FCM_SERVICE_ACCOUNT_JSON='...'       # Set Firebase key
-supabase secrets set AGORA_APP_ID=xxx                     # Set Agora key
+supabase logs                               # View all logs
+supabase logs db                            # Database logs only
+supabase logs --follow                      # Live tail
+supabase functions logs <function-name>     # Specific function logs
+```
+
+### Secrets (production)
+
+```bash
+supabase secrets list                       # List all secrets
+supabase secrets set KEY=value              # Set a secret
+supabase secrets unset KEY                  # Remove a secret
 ```
 
 ---
 
-## Connect Your App
+## Flutter App Connection
 
-### Flutter
+The Flutter app uses `.env.dev` with:
 
-```dart
-await Supabase.initialize(
-  url: 'http://localhost:54321',
-  anonKey: 'YOUR_ANON_KEY',  // get from: supabase status
-);
-
-// Login with test user
-await Supabase.instance.client.auth.signInWithPassword(
-  email: 'vathanak@test.com',
-  password: 'password123',
-);
+```env
+SUPABASE_URL=http://10.0.2.2:54321
+SUPABASE_ANON_KEY=<anon key from supabase status>
 ```
 
-### React / Next.js
+- **Android Emulator:** Uses `10.0.2.2` to reach host's `localhost`
+- **iOS Simulator / macOS:** Uses `127.0.0.1` directly
+- **Physical Device:** Use your Mac's LAN IP (e.g., `192.168.x.x:54321`)
 
-```javascript
-import { createClient } from '@supabase/supabase-js'
-
-const supabase = createClient(
-  'http://localhost:54321',
-  'YOUR_ANON_KEY'  // get from: supabase status
-)
-```
-
-> Run `supabase status` to get your `anon key`.
+> The `EnvConfig` class in the Flutter app auto-adapts the URL per platform.
 
 ---
 
-## Edge Functions Setup
+## Edge Functions
 
-The 8 edge functions run with `supabase functions serve --env-file .env`.
+8 edge functions (+ 1 shared module):
 
-Some functions need API keys to fully work:
+| Function | Auth Required | Description |
+|----------|---------------|-------------|
+| `send-push-notification` | Service Role | Send FCM push notifications |
+| `create-post` | Anon/User | Create social feed posts |
+| `send-message` | Anon/User | Send chat messages |
+| `moderate-content` | Anon/User | Content moderation checks |
+| `admin-actions` | Anon/User | Admin operations (ban, unban, etc.) |
+| `cleanup-worker` | Service Role | Clean up expired data |
+| `group-links` | Anon/User | Generate/validate group invite links |
+| `agora-token` | Anon/User | Generate Agora tokens for voice/video calls |
 
-| Function | Needs | Why |
-|----------|-------|-----|
-| `send-push-notification` | Firebase key | Send push to phones |
-| `create-post` | Nothing extra | Works out of the box |
-| `send-message` | Nothing extra | Works out of the box |
-| `moderate-content` | Nothing extra | Works out of the box |
-| `admin-actions` | Nothing extra | Works out of the box |
-| `cleanup-worker` | Nothing extra | Works out of the box |
-| `group-links` | Nothing extra | Works out of the box |
+### Environment Variables
 
-### Add Firebase + Agora Keys (Optional)
-
-Create `.env` file:
+Create `.env` from the example:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env`:
+Required variables in `.env`:
 
 ```env
+# Supabase (get values from `supabase status`)
+SUPABASE_URL=http://localhost:54321
+SUPABASE_ANON_KEY=<from supabase status>
+SUPABASE_SERVICE_ROLE_KEY=<from supabase status>
+
+# Firebase Push Notifications (optional — only for send-push-notification)
 FCM_SERVICE_ACCOUNT_JSON='{"type":"service_account",...}'
+
+# Agora Voice/Video (optional — only for agora-token)
 AGORA_APP_ID=your_app_id
 AGORA_APP_CERTIFICATE=your_certificate
 ```
 
-Then set as secrets:
-
-```bash
-supabase secrets set FCM_SERVICE_ACCOUNT_JSON="$(cat .env | grep FCM_SERVICE_ACCOUNT_JSON | cut -d= -f2)"
-supabase secrets set AGORA_APP_ID=your_app_id
-supabase secrets set AGORA_APP_CERTIFICATE=your_certificate
-```
-
-### Push Notification DB Trigger
-
-The database trigger that fires push notifications needs the service role key:
-
-```bash
-psql 'postgresql://postgres:postgres@localhost:54322/postgres' \
-  -c "ALTER DATABASE postgres SET app.settings.service_role_key = 'YOUR_SERVICE_ROLE_KEY';"
-```
-
-Get `YOUR_SERVICE_ROLE_KEY` from `supabase status`.
-
 ---
 
-## Test Edge Functions
+## Database Schema (16 tables)
 
-Get your keys first: `supabase status`
-
-```bash
-# Push notification
-curl -X POST http://localhost:54321/functions/v1/send-push-notification \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY" \
-  -d '{"user_id":"a1111111-1111-1111-1111-111111111111","title":"Test","body":"Hello","channel":"general"}'
-
-# Create post
-curl -X POST http://localhost:54321/functions/v1/create-post \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_ANON_KEY" \
-  -d '{"title":"My Post","content":"Hello world","tags":["test"]}'
-
-# Admin actions (ban user)
-curl -X POST http://localhost:54321/functions/v1/admin-actions \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_ANON_KEY" \
-  -d '{"action":"ban_user","target_user_id":"b2222222-2222-2222-2222-222222222222"}'
-
-
-# Moderate content
-curl -X POST http://localhost:54321/functions/v1/moderate-content \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_ANON_KEY" \
-  -d '{"text":"some text to check"}'
-
-# Group links
-curl -X POST http://localhost:54321/functions/v1/group-links \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_ANON_KEY" \
-  -d '{"action":"generate","room_id":"d4444444-4444-4444-4444-444444444444"}'
-
-# Cleanup worker
-curl -X POST http://localhost:54321/functions/v1/cleanup-worker \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_SERVICE_ROLE_KEY"
-
-# Send message
-curl -X POST http://localhost:54321/functions/v1/send-message \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_ANON_KEY" \
-  -d '{"room_id":"d4444444-4444-4444-4444-444444444444","content":"Hello!"}'
-```
-
----
-
-## Database Tables (16)
-
-| Table | What It Stores |
-|-------|----------------|
-| `profiles` | User accounts |
-| `chat_rooms` | Group chats + DMs |
-| `room_members` | Who's in which chat |
-| `messages` | Chat messages |
+| Table | Description |
+|-------|-------------|
+| `profiles` | User profiles (auto-created on signup via trigger) |
+| `chat_rooms` | Group chats + direct messages |
+| `room_members` | Chat room membership |
+| `messages` | Chat messages (text + file) |
 | `posts` | Social feed posts |
-| `comments` | Comments on posts (with replies) |
-| `post_likes` | Like tracking |
+| `comments` | Comments on posts (supports replies) |
+| `post_likes` | Post like tracking |
 | `notifications` | Push notification records |
-| `user_devices` | Phones/tablets for multi-device push |
-| `group_invite_links` | Group invite system |
-| `system_logs` | Audit logs |
-| `action_analytics` | Usage statistics |
+| `user_devices` | Device registration for multi-device push |
+| `group_invite_links` | Group invite code system |
+| `system_logs` | Audit trail |
+| `action_analytics` | Usage analytics |
 | `calls` | Voice/video call records |
-| `call_participants` | Call participation |
+| `call_participants` | Call participation tracking |
 | `typing_indicators` | Real-time typing status |
 | `post_image_deletions` | Image cleanup queue |
 
-Full details: [ARCHITECTURE.md](ARCHITECTURE.md)
+Full schema details: [ARCHITECTURE.md](ARCHITECTURE.md)
 
 ---
 
 ## Project Structure
 
 ```
-deconnect-supabase/
-├── supabase/
-│   ├── config.toml              # Local settings
-│   ├── seed.sql                 # Test data
-│   ├── migrations/              # 19 SQL files (run in order)
-│   └── functions/               # 8 Edge Functions
-│       ├── _shared/             # Shared code (cors, supabase client, helpers)
-│       ├── admin-actions/
-│       ├── cleanup-worker/
-│       ├── create-post/
-│       ├── group-links/
-│       ├── moderate-content/
-│       ├── send-message/
-│       └── send-push-notification/
-├── ARCHITECTURE.md              # All tables, functions, policies
-├── SETUP_GUIDE.md               # Dev workflow + deployment
+deconnect-supabase-local/
+├── .env.example                 # Template for environment variables
+├── .gitignore                   # Git ignore rules
+├── README.md                    # This file
+├── ARCHITECTURE.md              # Full schema, RPC functions, RLS policies
+├── SETUP_GUIDE.md               # Dev workflow + deployment guide
 ├── CHANGELOG.md                 # Version history
-└── README.md                    # This file
+├── package.json                 # Node.js dependencies
+└── supabase/
+    ├── config.toml              # Supabase local configuration
+    ├── seed.sql                 # Test data (3 users, sample posts, chats)
+    ├── migrations/              # 18 SQL migration files (run in order)
+    │   ├── 20260209000001_extensions.sql
+    │   ├── 20260209000002_tables.sql
+    │   ├── 20260209000003_indexes.sql
+    │   ├── 20260209000004_triggers_helpers.sql
+    │   ├── 20260209000005_rpc_functions.sql
+    │   ├── 20260209000006_rls_policies.sql
+    │   ├── 20260209000007_storage_policies.sql
+    │   ├── 20260209000008_cleanup_post_images.sql
+    │   ├── 20260209000009_add_image_path_to_posts.sql
+    │   ├── 20260213000010_push_notifications.sql
+    │   ├── 20260213000011_push_notification_rpcs.sql
+    │   ├── 20260213000013_logsystem.sql
+    │   ├── 20260217000001_post_comment_notifications.sql
+    │   ├── 20260217000002_consolidated_notification_fixes.sql
+    │   ├── 20260218000001_user_devices.sql
+    │   ├── 20260218000002_fix_type_field_triggers.sql
+    │   ├── 20260218100000_fixes.sql
+    │   └── 20260218200000_comprehensive_fixes.sql
+    └── functions/               # 8 Edge Functions + shared module
+        ├── _shared/             # Shared utilities (CORS, Supabase client)
+        ├── admin-actions/
+        ├── agora-token/
+        ├── cleanup-worker/
+        ├── create-post/
+        ├── group-links/
+        ├── moderate-content/
+        ├── send-message/
+        └── send-push-notification/
 ```
 
 ---
 
-## Common Issues
+## Troubleshooting
 
-| Problem | Fix |
-|---------|-----|
-| Docker not running | Open Docker Desktop, wait for green icon |
+| Problem | Solution |
+|---------|----------|
+| Docker not running | Open Docker Desktop, wait for the green icon |
 | Port already in use | `supabase stop` then `supabase start` |
-| Can't find `supabase` command | Install CLI: [supabase.com/docs/guides/cli](https://supabase.com/docs/guides/cli/getting-started) |
+| `supabase` command not found | Install: `brew install supabase/tap/supabase` |
 | Migration failed | Check SQL syntax, then `supabase db reset` |
-| Flutter can't connect | Run `supabase status`, copy the anon key |
-| Edge function 404 | Make sure `supabase functions serve --env-file .env` is running |
-| Push not working | Check `supabase secrets list` for Firebase key |
+| Flutter can't connect (emulator) | Ensure `usesCleartextTraffic="true"` in AndroidManifest.xml |
+| Flutter can't connect (physical device) | Use Mac's LAN IP instead of `10.0.2.2` in `.env.dev` |
+| Edge function returns 404 | Ensure `supabase functions serve --env-file .env` is running |
+| Push notifications not working | Check `.env` has valid `FCM_SERVICE_ACCOUNT_JSON` |
+| Login/register stuck loading | Verify Supabase is running: `curl http://localhost:54321/auth/v1/health` |
 
 ---
 
@@ -312,22 +265,35 @@ deconnect-supabase/
 
 See [SETUP_GUIDE.md](SETUP_GUIDE.md#deploy-to-production) for full steps.
 
-Short version:
-
 ```bash
+# 1. Link to your Supabase project
 supabase link --project-ref YOUR_PROJECT_REF
+
+# 2. Push database schema
 supabase db push
+
+# 3. Deploy all edge functions
 supabase functions deploy send-push-notification
+supabase functions deploy create-post
+supabase functions deploy send-message
+supabase functions deploy moderate-content
 supabase functions deploy admin-actions
-# ... deploy each function
+supabase functions deploy cleanup-worker
+supabase functions deploy group-links
+supabase functions deploy agora-token
+
+# 4. Set production secrets
+supabase secrets set FCM_SERVICE_ACCOUNT_JSON='...'
+supabase secrets set AGORA_APP_ID=your_app_id
+supabase secrets set AGORA_APP_CERTIFICATE=your_certificate
 ```
 
 ---
 
 ## More Documentation
 
-| File | What's Inside |
-|------|---------------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | All tables, 50+ RPC functions, RLS policies, triggers |
-| [SETUP_GUIDE.md](SETUP_GUIDE.md) | Dev workflow, making changes, deployment |
+| File | Contents |
+|------|----------|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Full schema, 50+ RPC functions, RLS policies, triggers |
+| [SETUP_GUIDE.md](SETUP_GUIDE.md) | Development workflow, making changes, deployment |
 | [CHANGELOG.md](CHANGELOG.md) | Version history |

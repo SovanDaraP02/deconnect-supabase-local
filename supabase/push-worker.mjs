@@ -1,13 +1,12 @@
 // push-worker.mjs — Polls notifications table and sends FCM push via Edge Function
 
 const SUPABASE_URL = "http://127.0.0.1:54321";
-
 const SERVICE_ROLE_KEY =
     "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU";
-
 const EDGE_FN_URL = `${SUPABASE_URL}/functions/v1/send-push-notification`;
 
 const sentIds = new Set();
+let consecutiveErrors = 0;
 
 /**
  * Sanitize strings to remove control characters that break JSON/FCM payloads.
@@ -16,10 +15,19 @@ function sanitize(str) {
     if (!str || typeof str !== "string") return str || "";
     return str
         .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+        .replace(/\r\n/g, " ")
         .replace(/\n/g, " ")
-        .replace(/\r/g, "")
+        .replace(/\r/g, " ")
         .replace(/\t/g, " ")
         .trim();
+}
+
+/**
+ * Exponential back-off: 2s → 4s → 8s … max 30s
+ */
+function getBackoffDelay() {
+    if (consecutiveErrors <= 0) return 2000;
+    return Math.min(2000 * Math.pow(2, consecutiveErrors), 30000);
 }
 
 /**
@@ -46,9 +54,13 @@ async function pollAndSend() {
 
             if (!res.ok) {
                 console.error("Failed to fetch notifications:", res.status);
-                await sleep(2000);
+                consecutiveErrors++;
+                await sleep(getBackoffDelay());
                 continue;
             }
+
+            // Reset error counter on successful fetch
+            consecutiveErrors = 0;
 
             const notifications = await res.json();
 
@@ -70,8 +82,9 @@ async function pollAndSend() {
                             title: sanitize(notif.title),
                             body: sanitize(notif.body),
                             channel: notif.channel,
-                            room_id: notif.room_id,
-                            sender_id: notif.sender_id,
+                            room_id: notif.room_id || null,
+                            sender_id: notif.sender_id || null,
+                            post_id: notif.post_id || null,
                             id: notif.id,
                         }),
                     });
@@ -87,7 +100,7 @@ async function pollAndSend() {
                         );
                     } else if (result.skipped) {
                         console.log(
-                            "Skipped (" +
+                            "  Skipped (" +
                             result.reason +
                             ") -> " +
                             sanitize(notif.title) +
@@ -96,7 +109,7 @@ async function pollAndSend() {
                         );
                     } else {
                         console.log(
-                            "Failed -> " +
+                            "  Failed -> " +
                             sanitize(notif.title) +
                             ": " +
                             JSON.stringify(result.error || result)
@@ -117,10 +130,7 @@ async function pollAndSend() {
                         }
                     );
                 } catch (pushErr) {
-                    console.error(
-                        "Push error for " + notif.id + ":",
-                        pushErr.message
-                    );
+                    console.error("Push error for " + notif.id + ":", pushErr.message);
                     // Allow retry on next poll
                     sentIds.delete(notif.id);
                 }
@@ -135,9 +145,10 @@ async function pollAndSend() {
             }
         } catch (err) {
             console.error("Poll error:", err.message);
+            consecutiveErrors++;
         }
 
-        await sleep(2000);
+        await sleep(getBackoffDelay());
     }
 }
 
